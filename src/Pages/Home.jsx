@@ -1,6 +1,61 @@
-// src/components/Home.jsx
-import React, { useState } from 'react';
+
 import axios from 'axios';
+import React, { useState } from "react";
+import { Room, createLocalAudioTrack } from "livekit-client";
+
+export const VoiceAssistant = () => {
+  const [connected, setConnected] = useState(false);
+
+  const joinRoom = async () => {
+
+    
+    try {
+      const res = await fetch("http://localhost:5000/api/token");
+      console.log("🔗 Fetching token from server...");
+      const { token, url } = await res.json();
+      console.log("🔑 Token received:");
+        
+
+      const room = new Room();
+      await room.connect(url, token);
+
+      const audioTrack = await createLocalAudioTrack();
+      await room.localParticipant.publishTrack(audioTrack);
+      console.log("🎤 Microphone track published");
+
+      room.on("participantConnected", (participant) => {
+        console.log("👥 Participant connected:", participant.identity);
+      });
+
+
+      room.on("trackSubscribed", (track, publication, participant) => {
+        console.log("🔊 Subscribed to track:", track.kind, participant.identity)
+        if (track.kind === "audio") {
+          const audio = track.attach();
+          audio.autoplay = true;
+          document.body.appendChild(audio);
+          console.log("🎧 Assistant audio attached.");
+        }
+      });
+
+      setConnected(true);
+    } catch (err) {
+      console.error("❌ Voice assistant error:", err);
+    }
+  };
+
+  return (
+    <div className="text-green-500">
+      {connected ? (
+        "🎙️ Voice Assistant Connected"
+      ) : (
+        <button onClick={joinRoom}>🔊 Start Voice Assistant</button>
+      )}
+    </div>
+  );
+};
+
+
 
 const Home = () => {
   const [file, setFile] = useState(null);
@@ -84,6 +139,12 @@ const Home = () => {
         <h1 className="text-2xl font-bold mb-4">Document Assistant</h1>
         <h2 className="text-lg font-semibold mb-2">Answer:</h2>
         <p className="text-gray-300">{answer}</p>
+
+        {/* Voice Assistant UI */}
+        <div className="mt-8 p-4 bg-gray-800 rounded shadow text-center border border-gray-700">
+          <VoiceAssistant />
+        </div>
+
       </div>
     </div>
   );
