@@ -1,152 +1,153 @@
-import React, { useState } from 'react';
-import SidePanel from '../Components/Home/SidePanel';
-import Header from '../Components/Home/Header';
-import TutorChat from './TutorChat';
-import CenterPanel from '../Components/Home/CenterPanel';
-import axios from 'axios';
+import React, { useState } from "react";
+import SidePanel from "../Components/Home/SidePanel";
+import Header from "../Components/Home/Header";
+import TutorChat from "./TutorChat";
+import CenterPanel from "../Components/Home/CenterPanel";
+import NewChatModal from "../Components/Sidepannel/NewChatModal";
+import axios from "axios";
 
 const Home = () => {
-  const [mode, setMode] = useState('default');
-  const [activeComponent, setActiveComponent] = useState('');
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
-  const [currentChatName, setCurrentChatName] = useState('');
+  const [currentChatName, setCurrentChatName] = useState("");
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
 
+  /* Fetch chats once (example trigger) */
+  const loadChats = async () => {
+    const user = JSON.parse(localStorage.getItem("user"));
+    if (!user?.user_id) return;
 
-const handleTutorChatClick = async () => {
-  setMode('chat');
-  setActiveComponent('chat');
-  
+    try {
+      const res = await axios.post(
+        "http://localhost:8000/tutor/api/chat",
+        { user_id: user.user_id }
+      );
+      setChats(res.data.data || []);
+    } catch (err) {
+      console.error("Chat load failed", err);
+    }
+  };
 
-
- 
-
-  const userData = localStorage.getItem('user'); // assuming it's stored like this
-
-  const userLoad = JSON.parse(userData);
- 
-  console.log(userLoad);
-  console.log(userLoad.user_id);
-
-  if (!userLoad) {
-    console.error('No user_id found in localStorage');
-    return;
-  }
-
+  /* Create new chat */
+ const handleCreateNewChat = async (chatName, file) => {
   try {
-    const res = await axios.post('http://localhost:8000/tutor/api/chat', {
-      user_id: userLoad.user_id,
-    });
-     console.log(res.data.data);
-    setChats(res.data.data); // expects [{chat_id, chat_name}]
-    console.log(res.data);
-  } catch (err) {
-    console.error('Failed to fetch chat list:', err);
-  }
-};
+    const user = JSON.parse(localStorage.getItem("user"));
+    if (!user?.user_id) {
+      console.error("User not found");
+      return;
+    }
 
-  const handleNewChat = () => {
-    const newId = Date.now().toString();
+    const chatId = crypto.randomUUID();
+
+    const formData = new FormData();
+    formData.append("chat_id", chatId);
+    formData.append("user_id", user.user_id);
+    formData.append("chat_name", chatName);
+    if (file) {
+      formData.append("file", file);
+    }
+
+    // 🔥 API CALL
+    const res = await axios.post(
+      "http://localhost:8000/tutor/api/create-chat",
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
+
+    // ✅ Only after success → update UI
     const newChat = {
-      chat_id: newId,
-      chat_name: `New Chat ${chats.length + 1}`,
-      history: [],
-      isNew: true,  
-    };
-    setChats([...chats, newChat]);
-    setActiveChatId(newId);
-  };
-
-
-  
-  const markChatAsSaved = (chatId) => {
-  setChats((prevChats) =>
-    prevChats.map((chat) =>
-      chat.chat_id === chatId ? { ...chat, isNew: false } : chat
-    )
-  );
-};
-
-
-const handleChatSelect = async (chatId) => {
-  setActiveChatId(chatId);
-  setActiveComponent('chat');
-
-
-  const selected = chats.find((chat) => chat.chat_id === chatId);
-  if (selected) setCurrentChatName(selected.chat_name);
-
-  try {
-    const res = await axios.post("http://localhost:8000/tutor/api/msg", {
       chat_id: chatId,
-    });
+      chat_name: chatName,
+      history: [],
+      file: file || null,
+      isNew: true,
+    };
 
-    const rawData = res.data?.data || [];
+    setChats((prev) => [...prev, newChat]);
+    setActiveChatId(chatId);
+    setCurrentChatName(chatName);
 
-    const messages = rawData.map((item) => ({
-      sender: item.message.data.type, // 'human' or 'ai'
-      message: item.message.data.content,
-      timestamp: item.created_at,
-    }));
-
-    setChats((prev) =>
-      prev.map((chat) =>
-        chat.chat_id === chatId ? { ...chat, history: messages } : chat
-      )
-    );
-  } catch (err) {
-    console.error('Failed to fetch chat messages:', err);
+  } catch (error) {
+    console.error("Create chat failed:", error);
   }
 };
 
 
+  /* Select chat */
+  const handleChatSelect = async (chatId) => {
+    setActiveChatId(chatId);
 
-  const updateChatName = (id, newName) => {
+    const selected = chats.find((c) => c.chat_id === chatId);
+    if (selected) setCurrentChatName(selected.chat_name);
+
+    try {
+      const res = await axios.post(
+        "http://localhost:8000/tutor/api/msg",
+        { chat_id: chatId }
+      );
+
+      const messages =
+        res.data?.data?.map((item) => ({
+          sender: item.message.data.type,
+          message: item.message.data.content,
+          timestamp: item.created_at,
+        })) || [];
+
+      setChats((prev) =>
+        prev.map((chat) =>
+          chat.chat_id === chatId
+            ? { ...chat, history: messages }
+            : chat
+        )
+      );
+    } catch (err) {
+      console.error("Message fetch failed", err);
+    }
+  };
+
+  const updateChatName = (id, name) => {
     setChats((prev) =>
       prev.map((chat) =>
-        chat.chat_id === id ? { ...chat, chat_name: newName } : chat
+        chat.chat_id === id ? { ...chat, chat_name: name } : chat
       )
     );
   };
 
-  const activeChat = chats.find((chat) => chat.chat_id === activeChatId);
+  const activeChat = chats.find((c) => c.chat_id === activeChatId);
 
   return (
     <div className="flex h-screen w-screen bg-gray-100 overflow-hidden">
       <SidePanel
-        mode={mode}
         chats={chats}
-        onNewChat={handleNewChat}
+        activeChatId={activeChatId}
         onChatSelect={handleChatSelect}
         onRenameChat={updateChatName}
-        activeChatId={activeChatId}
         currentChatName={currentChatName}
         setCurrentChatName={setCurrentChatName}
+        onNewChat={() => setShowNewChatModal(true)}
       />
+
       <div className="flex flex-col flex-1">
         <Header />
         <div className="flex-1 overflow-auto">
-         {activeComponent === 'chat' && activeChat ? (
-        <TutorChat
-          chat={activeChat}
-          markChat={markChatAsSaved}
-          currentChatName={currentChatName}
-          updateChat={(chatId, entry) => {
-            setChats((prev) =>
-              prev.map((chat) =>
-                chat.chat_id === chatId
-                  ? { ...chat, history: [...(chat.history || []), entry] }
-                  : chat
-              )
-            );
-          }}
-        />
-      ) : (
-        <CenterPanel setActiveComponent={handleTutorChatClick} />
-      )}
-
+          {activeChat ? (
+            <TutorChat chat={activeChat} />
+          ) : (
+            <CenterPanel />
+          )}
         </div>
       </div>
+
+      {showNewChatModal && (
+        <NewChatModal
+          onClose={() => setShowNewChatModal(false)}
+          onCreate={handleCreateNewChat}
+        />
+      )}
     </div>
   );
 };
